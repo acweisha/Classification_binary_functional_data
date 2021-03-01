@@ -1,23 +1,14 @@
 ##################
-#Functions for 
+#Functions for "Classification of Social Media Users Using a Generalized Functional Analysis"
 #
 #Author: Anthony Weishampel
 #Date: 2/27/2021
 #
 ##################
 
-
-
-
-
-library(splines)
+#dependancies to run all of the code
 library(fields)
-library(class)
-library(gamm4)
-library(mvtnorm)
-library(MLmetrics)
 library(parallel)
-library(naivebayes)
 library(xtable)
 library(fda)
 library(refund)
@@ -25,23 +16,6 @@ library(Matrix)
 library(MASS)
 library(fields)
 library(arm)
-library(kernlab)
-library(svd)
-
-inv.mat <- function(mat){
-  
-  x2 = svd2(mat)
-  x2$d=ifelse(x2$d>0, x2$d, 0)
-  mat=round(x2$u%*%diag(x2$d)%*%t(x2$v), 7)
-  
-  chol_mat = chol(mat)
-  chol_mat_inv = forwardsolve(t(chol_mat), diag(dim(mat)[1]))
-  chol_mat_inv = backsolve(chol_mat, chol_mat_inv)
-  
-  return(chol_mat_inv)
-  
-}
-
 
 ####
 #Function to generate data in the various scenarios
@@ -179,7 +153,8 @@ generate_data <- function(scenario = 1 , grid=seq(from = 0,to = 1, length.out = 
     #ndf is global variable for running scenario C
     is=1:ndf
     # estimate the scores for each component
-    scores1 = sapply(is, function(x) get.scores(x, n1, n2))
+    # dens.dat is a global variable which estimates the 
+    scores1 = sapply(is, function(x) get.scores(dens.dat, x, n1, n2))
     
     #mean function globally defined
     mu_hat = mu_t_hat
@@ -252,24 +227,25 @@ get_length_pve = function(pve, vec, set_max_number = NA){
 
 
 #####
-#Fucnction to estimate eiginfunctions
+#Function to estimate eiginfunctions
 #
 #Inputs: 
 # K_b: estimate for covariance matrix
 # pve: Proportion of variance explained
-# fix_num_of_functions: set the number of eigenfuctions to be returned
+# fix_num_of_functions: set the number of eigenfunctions to be returned
 #
 #Outputs: 
-# 
+# eigenvalues and eigenvectors
 #
 #####
 estimate_eigenfunctions = function(K_b, pve=0.98, fix_num_of_functions=0){
   
-  #SVD
+  #SVD on matrix
   svd_kb = svd2(K_b)
   
   #Only get the pve length if the number of functions is not given
   if(fix_num_of_functions==0){
+    #get number of components
     pb = get_length_pve(pve, svd_kb$d)
   }else{
     pb = fix_num_of_functions
@@ -282,124 +258,8 @@ estimate_eigenfunctions = function(K_b, pve=0.98, fix_num_of_functions=0){
   
 }
 
-fpca_estimate_functions <-  function(Curves, pve=0.98, fix_number_of_functions = 0){
-  
-  K_s = var(Curves)
-  
-  D = dim(K_s)[1]
-  Ys = cbind(as.vector(K_s), rep(1:D, D), as.vector(t(kronecker(matrix(1, ncol=D) , 1:D) )))
-  #remove diagonals to remove excess error
-  Ys = Ys[which(Ys[,2]!=Ys[,3]), ]
-  K_s2 = smooth.2d(Ys[,1], ind = Ys[, 2:3] , nrow = D, ncol= D, theta = 4)
-  K_s = K_s2$z
-  K_s = make_pos_semi_def(K_s)
-  
-  fpca_results = estimate_eigenfunctions(K_s, pve, fix_number_of_functions)
-  fpca_results$eigen_funcs1 = fpca_results$eigen_funcs1*sqrt(D)
-  fpca_results$eigen_vals1 = fpca_results$eigen_vals1/D
-  sigma = mean(diag(var(Curves)-K_s))
-  
-  # fit = smooth.spline(as.vector(colMeans(Curves)))
-  # mu_hat = fit$y
-  
-  z1 = as.vector(colMeans(Curves))
-  gam1 <- gam(z1~s(tt, bs = "cr", m=2, k = 10), 
-              family="gaussian", method = "REML")
-  mu_hat = gam1$fitted.values
-  
-  
-  return(list(eigen_vals=fpca_results$eigen_vals1,
-              eigen_funcs=fpca_results$eigen_funcs1,
-              sigma = sigma, mu_hat = mu_hat))
-  
-}
-
-
-#Function to return the logit
-logit <- function(x){
-  return(log(x/(1-x)))
-}
-
-#Function to return the inverse of the logit
-invlogit <- function(x){
-  return(1/(1+exp(-x)))
-}
-
-#function to return the derivative of the logit
-d_logit <- function(x){
-  return( logit(x)*(1-logit(x)))
-}
-
-
-#Method for extracting scores (training an testing sets) based on Hall function 2008
-GFPCA_estimate_para_with_test <- function(Curves_binary, Curves_binary_test){
-  
-  D = dim(Curves_binary)[2]
-  N = dim(Curves_binary)[1]
-  N_test = dim(Curves_binary_test)[1]
-  tt = seq(0,1, len=D)
-  
-  #estimated smooth mean function
-  z1 = as.vector(colMeans(Curves_binary))
-  gam1 <- gam(z1~s(tt, bs = "cr", m=2, k = 10),
-              family="gaussian", method = "REML")
-  #because probability needs to ensure values are between 0 and 1
-  alpha_t = ifelse(gam1$fitted.values<0.001, 0.001, gam1$fitted.values)
-  alpha_t = ifelse(alpha_t>0.999, 0.999, alpha_t)
-  
-  # fit = smooth.spline(as.vector(colMeans(Curves_binary)))#, lambda = 0.01)
-  # #make sure probabilities aren't 0 or 1 after smoothing
-  # alpha_t = ifelse(fit$y<0.001, 0.001, fit$y) 
-  # alpha_t = ifelse(alpha_t>0.999, 0.999, alpha_t)
-  
-  v_t_hat = as.vector(invlogit(alpha_t))
-  alpha_t_hat = as.vector(alpha_t)
-  
-  beta_ts  = t(Curves_binary)%*%Curves_binary/N
-  
-  Bs = cbind(as.vector(beta_ts), rep(1:D, D), as.vector(t(kronecker(matrix(1, ncol=D) , 1:D) )))
-  #remove diagonals to remove excess error
-  Bs = Bs[which(Bs[,2]!=Bs[,3]), ]
-  #smooth the covariance matrix
-  beta_ts2 = smooth.2d(Bs[,1], ind = Bs[, 2:3] , nrow = D, ncol= D, theta = 4)
-  beta_ts_hat = beta_ts2$z
-  tau_ts = (beta_ts_hat - matrix(alpha_t_hat, ncol = 1) %*% t(alpha_t_hat))/
-    (matrix(d_logit(v_t_hat), ncol = 1)%*%t(d_logit(v_t_hat)))
-  
-  #make sym and semi-post def
-  tau_ts_hat = round(make_pos_semi_def(tau_ts), 5)
-  mu_t_hat = v_t_hat
-  
-  #decomposition of resulting covariance matrix
-  tau_eigens  =  estimate_eigenfunctions(tau_ts_hat, pve = 0.98)
-  
-  #estimate from Hall 2008
-  d = t((Curves_binary - matrix(rep(logit(mu_t_hat), each = N), ncol = D)) /
-          matrix(rep(d_logit(mu_t_hat), each = N), ncol = D))
-  
-  #it's small enough to use solve
-  #sigma_inv = solve(tau_ts_hat+diag(0.01, D))
-  sigma_inv = solve(tau_ts_hat)
-  
-  d_test = t((Curves_binary_test - matrix(rep(logit(mu_t_hat), each = N_test), ncol = D)) /
-               matrix(rep( d_logit(mu_t_hat), each = N_test), ncol = D))
-  
-  #estimate scores via approximation presented in Hall 2008
-  score_coef = t(t(matrix(rep(tau_eigens$eigen_vals1, each = N), nrow = N))*
-                   (t(tau_eigens$eigen_funcs1)%*%sigma_inv%*%d))
-  
-  #estimate scores in testing set via approximation presented in Hall 2008
-  score_coef_test = t(t(matrix(rep(tau_eigens$eigen_vals1, each = N_test), nrow = N_test))*
-                        (t(tau_eigens$eigen_funcs1)%*%sigma_inv%*%d_test))
-  
-  return(list(score_coef, score_coef_test))
-  
-}
-
 # Here I define various scenarios:
-
 # Scenarios inspired by Delaigle and Hall(2012)
-
 # Define latent process X_i using Fourier basis
 # X1 is length_timepoints x n
 generate_latent_process <- function(theta, mu_coeff, tt, n=20){
@@ -432,21 +292,454 @@ generate_binary_fns <- function(X){
 }
 
 
-fpca_estimate_functions_dai <-  function(Curves, Classes, pve=0.98, fix_number_of_functions = 0){
+#####
+#Function: To get the density values of new scores for an individual in a given class
+#
+#Inputs: 
+# densities: List of density lists 
+# scores: mtrix of scores for the N individual 
+# classes: matrix of classes (these are not the true classes but the value to be evaluated)
+# i: which individual to evaluate
+#
+#Output: 
+# Density values of the new scores for individual i
+#
+#####
+get_pdf_den2 = function(densities, scores, classes, i){
   
-  Ks1 = var(Curves[Classes==1,])
-  Ks2 = var(Curves[Classes==2,])
+  #get score for current user
+  score_cur = scores[i,]
+  #get class for current user
+  class_cur = classes[i]
+  #get density for current class
+  dens_cur = densities[[class_cur]]
+  
+  pdf.vals = rep(NA, length(dens_cur))
+  #for each component
+  for(k in 1:length(dens_cur)){
+    
+    #get K comp density
+    dens_cur_k = dens_cur[[k]]
+    
+    #approximate the function
+    approx_fun_den = approxfun(dens_cur_k)
+    
+    #get new score
+    xnew = score_cur[k]
+    
+    #if new value is outside of defined range
+    if(xnew<=min(dens_cur_k$x)){
+      xnew=min(dens_cur_k$x)
+    }
+    #if new vlaue is outside of defined range
+    if(xnew>=max(dens_cur_k$x)){
+      xnew=max(dens_cur_k$x)
+    }
+    
+    #get value in the desnity
+    pdf.vals[k]  = approx_fun_den(xnew)
+    
+  }
+  return(pdf.vals) 
+}
+
+#####
+#Function: Grid search to estimate predicted values and estimate the values of h
+#
+#Inputs: 
+# scores: N x K matrix of scores in the training set
+# classes: Group labels vector of length N
+# prior_g: vector of prior probability of being in each group, sums up to 1
+# scores_test: N_test x K matrix of scores in the testing set
+# h: multiplier for kernel based density function
+#
+#Output: 
+# predicted classes for the Bayes Classifier
+#
+#####
+nb_updated = function(scores, classes, prior_g, scores_test, h = 1.06){
+  
+  #in case scores are N x 1 matrix that is read as a vector 
+  if(length(scores)==length(classes)){
+    scores = matrix(scores, ncol = 1) 
+    scores_test = matrix(scores_test, ncol = 1) 
+  }
+  
+  #get K 
+  nd = dim(scores)[2]
+  #get number of groups
+  ng = length(unique(classes))
+  #initialize list
+  densities = list()
+  #estimate density at each K for each group
+  for(i in 1:ng){
+    densities[[i]]=list()
+    for(k in 1:nd){
+      densities[[i]][[k]] = density(scores[classes==i,k],
+                                    kernel = "gaussian", 
+                                    bw = h*sd(scores[classes==i,k]))
+    }
+  }
+  
+  # get number of test functions
+  n_test = dim(scores_test)[1]
+  p.mat = matrix(NA, nrow = n_test, ncol = length(prior_g))
+  vec = matrix(1:n_test, ncol = 1)
+  #For each group get the Bayes classifier value of probability of being in that group 
+  for(i in 1:ng){
+    #apply for each user get the probability for each component in that group
+    pdf.vals.test.1 = t(apply(vec, 1,
+                              function(x)  get_pdf_den2(densities, scores_test, rep(i, n_test), x)))
+    #apply for each user to get the product of those K probabilities
+    pdf_vals = apply(pdf.vals.test.1, 1, prod)
+    #multiply by prior probability
+    p.mat[,i] = prior_g[i]* pdf_vals #p.mat is now matrix of Bayes probabilities
+  }
+  
+  #get guess based on which is the max
+  guess = apply(p.mat, 1, which.max)
+  
+  return(guess)
+  
+}
+
+
+#####
+#Function: Grid search to estimate predicted values and estimate the values of h
+#
+#Inputs: 
+# scores: N x K matrix of scores in the training set
+# classes: Group labels vector of length N
+# prior_g: vector of prior probability of being in each group, sums up to 1
+# scores_test: N_test x K matrix of scores in the testing set
+# min.h: min possible value for the multiplier
+# max.h: maximum possible value for the multiplier
+# n_grid: number of vlaues between min.h and max.h to search over
+# CV: Number of folds for cross validation
+# return_h: T/F to return the value of the multiplier
+# return_prob: T/F to return group Bayes classifier probability for each individual in testing set
+#
+#Output: 
+# predictions from the grid search
+#
+#####
+nb_updated_grid = function(scores, classes, prior_g, scores_test,
+                           min.h = 0.01, max.h = 1,
+                           CV = 10, n_grid = 25, return_h = F, return_prob = F){
+  
+  #create matrix for apply functions
+  vec.cv = matrix(1:CV, ncol = 1)
+  
+
+  #create vector of possible CV groups to each account 
+  #add extra incase unequal distribution of groups
+  cvgroups = rep(1:CV, (length(classes)/CV+1))
+  #remove the unneeded values
+  cvgroups = cvgroups[1:length(classes)]
+  #randomly assign CV group to each account
+  cvgroups = sample(cvgroups, size = length(classes), replace = F)
+  
+  #in case scores are N x 1 matrix that is read as a vector 
+  if(length(scores)==length(classes)){
+    #If k == 1 change to vector
+    scores = matrix(scores, ncol = 1) 
+    scores_test = matrix(scores_test, ncol = 1) 
+  }
+  
+  # define function here to use the cvgroups this function 
+  # will be used in the following apply statement
+  get.cv.h = function(h.val){
+    groups.probs = 
+      apply(vec.cv, 1, function(x) 
+        mean(#get guess using the nb_updated function
+          nb_updated(scores[cvgroups!=x,], classes[cvgroups!=x], 
+                     c(table(classes[cvgroups!=x])/length(classes[cvgroups!=x])) , #define the new prior probs 
+                     scores[cvgroups==x,], h = h.val) ==  classes[cvgroups==x]))
+    #return the accuracy of the prediction
+    mean(groups.probs)
+  }
+  
+  #initialize matrix for apply which contains all of the possible grid values
+  grid.vals.h = matrix(seq(min.h, max.h, length.out = n_grid), ncol = 1)
+  #apply the previously defined functions to get the CV accuracies at each h value
+  h.accs = apply(grid.vals.h, 1, function(h) get.cv.h(h))
+  
+  # assign h value based on the one with the largest CV accuracy
+  h = grid.vals.h[which.max(h.accs)]
+  #h = grid.vals.h[max(which(h.accs==max(h.accs)))]
+  
+  #get K 
+  nd = dim(scores)[2]
+  #get number of groups
+  ng = length(unique(classes))
+  #initialize list
+  densities = list()
+  #estimate density at each K for each group
+  for(i in 1:ng){
+    densities[[i]]=list()
+    for(k in 1:nd){
+      densities[[i]][[k]] = density(scores[classes==i,k],
+                                    kernel = "gaussian", 
+                                    bw = h*sd(scores[classes==i,k]))
+    }
+  }
+  
+  # get number of test functions
+  n_test = dim(scores_test)[1]
+  p.mat = matrix(NA, nrow = n_test, ncol = length(prior_g))
+  vec = matrix(1:n_test, ncol = 1)
+  #For each group get the Bayes classifier value of probability of being in that group 
+  for(i in 1:ng){
+    #apply for each user get the probability for each component in that group
+    pdf.vals.test.1 = t(apply(vec, 1,
+                              function(x)  get_pdf_den2(densities, scores_test, rep(i, n_test), x)))
+    #apply for each user to get the product of those K probabilities
+    pdf_vals = apply(pdf.vals.test.1, 1, prod)
+    #multiply by prior probability
+    p.mat[,i] = prior_g[i]* pdf_vals #p.mat is now matrix of Bayes probabilities
+  }
+  
+  #returns matrix of probabilies for each group
+  if(return_prob){
+    return(p.mat/rowSums(p.mat))
+  }
+  
+  #group prediction is based on maximum posterior probability
+  guess = apply(p.mat, 1, which.max)
+  
+  #print(h)
+
+  if(return_h){
+    return(h)
+  }
+  
+  #return guesses
+  return(guess)
+  
+}
+
+
+#####
+#Function: wrapper function for gam() which outputs the fitted values
+#
+#Inputs: 
+# z : index z = 1,...,N 
+# Curves : N x D matrix of observed binary series
+# tt : grid of timepoints going from 0 to 1 with D observations
+# k : number of basis functions
+# method: method used to evaluate the gam
+#
+#Output: 
+# Fitted values from the game function for subject z 
+#
+#####
+regression_g = function(z, Curves, tt, k=10, method="REML"){
+  z1 = Curves[z,]
+  gam1 <- gam(z1~s(tt, bs = "cr", m=2, k = k), 
+              family="binomial", method = method)
+  return(gam1$fitted.values)
+}
+
+
+#####
+#Function: wrapper function for bayesglm() which outputs expected coefficients for the gaussian responses
+#
+#Inputs: 
+# z : index z = 1,...,N 
+# dta : data frame contain the subject id, mean function, eigenfunctions and observe binary values
+# lm_structure: formula displaying the bayesglm function
+# eigen_vals1: eigen_values for the psi coefficients
+#
+#Output: 
+# Fitted values from the game function for subject z 
+#
+#Notes: This function is used in simulation scenario Spline+FPCA
+#####
+regression_bf = function(z, dta, lm_structure, eigen_vals1){
+  bayesglm1 = bayesglm(lm_structure,
+                       family = gaussian,
+                       data = subset(dta, dta$id==z),
+                       prior.scale = sqrt(eigen_vals1),
+                       prior.df = Inf, scaled = F)
+  return(bayesglm1$coefficients)
+}
+
+#####
+#Function: wrapper function for bayesglm() which outputs expected coefficients for the gaussian responses
+#
+#Inputs: 
+# z : index z = 1,...,N 
+# dta : data frame contain the subject id, mean function, eigenfunctions and observe binary values
+# lm_structure: formula displaying the bayesglm function
+# eigen_vals1: eigen_values for the psi coefficients
+#
+#Output: 
+# Fitted values from the game function for subject z 
+#
+#####
+regression_bf2 = function(z, dta, lm_structure, eigen_vals1){
+  bayesglm1 = bayesglm(lm_structure,
+                       family = binomial(link = "logit"),
+                       data = subset(dta, dta$id==z),
+                       prior.scale = sqrt(eigen_vals1), #set scales
+                       prior.df = Inf, #normal priors
+                       scaled = F ) #Do not adjust the scales
+  return(bayesglm1$coefficients)
+}
+
+
+#####
+#Function: Randomly draw new scores from the two density distributions 
+#
+#Inputs: 
+# dens.dat: list containing the following information about the two densities
+#       dens.dat[[k]] = list containing the information on the kth component
+#       For each k: Data.frame defined as
+#             dens.dat[[k]]$score: vector containing defining the x values two groups
+#             dens.dat[[k]]$d1.not: vector of same length containing the density values for not bots
+#             dens.dat[[k]]$d1.bot: vector of same length containing the density values for bots
+# k: which component to draw from k = 1,...,K
+# n1: number of bots to draw from
+# n2: number of genuine accounts to draw from
+#
+#Outputs: 
+# vector of scores for the kth component (bot scores, genuine scores)
+#
+#####
+get.scores = function(dens.dat, k, n1, n2){
+  
+  #randomly draw from uniform distributions
+  q.vals1 = runif(n1, 0, 1)
+  q.vals2 = runif(n2, 0, 1)
+  # get the estimated density 
+  # dens.dat is a global variable
+  dens.dat.cur = dens.dat[[k]]
+  
+  #estimate empirical cdfs
+  dens.dat.cur$cdf1 = cumsum(dens.dat.cur$d1.bot)/sum(dens.dat.cur$d1.bot)
+  dens.dat.cur$cdf2 = cumsum(dens.dat.cur$d1.not)/sum(dens.dat.cur$d1.not)
+  
+  #Recover scores for each group 
+  #Find the closest value of the random uniform dist to the empirical cdf 
+  #   and the score corresponding to that value 
+  scores.n1 = sapply(q.vals1, function(x) dens.dat.cur$score[which.min(abs(x-dens.dat.cur$cdf1))])
+  scores.n2 = sapply(q.vals2, function(x) dens.dat.cur$score[which.min(abs(x-dens.dat.cur$cdf2))])
+  
+  return(c(scores.n1, scores.n2))
+  
+}
+
+
+
+#####
+#Function: Method for extracting scores (training an testing sets) 
+# based on methodology presented in Hall 2008
+#
+#Inputs: 
+# Curves_binary: N x M matrix of binary observations for the training set accounts
+# Curves_binary_test: N_test x M matrix of binary observations for the testing set accounts
+#
+#Outputs: 
+# scores for both training and testing set accounts
+#
+#Notes: This is only used at the mFPCA comparable
+#####
+GFPCA_estimate_para_with_test <- function(Curves_binary, Curves_binary_test){
+  
+  D = dim(Curves_binary)[2]
+  N = dim(Curves_binary)[1]
+  N_test = dim(Curves_binary_test)[1]
+  tt = seq(0,1, len=D)
+  
+  #estimate smooth mean function
+  z1 = as.vector(colMeans(Curves_binary))
+  gam1 <- gam(z1~s(tt, bs = "cr", m=2, k = 10),
+              family="gaussian", method = "REML")
+  #because probability needs to ensure values are between 0 and 1
+  alpha_t = ifelse(gam1$fitted.values<0.001, 0.001, gam1$fitted.values)
+  alpha_t = ifelse(alpha_t>0.999, 0.999, alpha_t)
+  
+  #from Hall 2008 paper 
+  v_t_hat = as.vector(invlogit(alpha_t))
+  alpha_t_hat = as.vector(alpha_t)
+  beta_ts  = t(Curves_binary)%*%Curves_binary/N
+  
+  #Format for smooth function 
+  Bs = cbind(as.vector(beta_ts), rep(1:D, D), as.vector(t(kronecker(matrix(1, ncol=D) , 1:D) )))
+  #remove diagonals to remove excess error
+  Bs = Bs[which(Bs[,2]!=Bs[,3]), ]
+  #smooth the covariance matrix, need large theta because we have lots of data points
+  beta_ts2 = smooth.2d(Bs[,1], ind = Bs[, 2:3] , nrow = D, ncol= D, 
+                       cov.function = gauss.cov, theta = 4)
+  beta_ts_hat = beta_ts2$z
+  tau_ts = (beta_ts_hat - matrix(alpha_t_hat, ncol = 1) %*% t(alpha_t_hat))/
+    (matrix(d_logit(v_t_hat), ncol = 1)%*%t(d_logit(v_t_hat)))
+  
+  #make sym and semi-post def
+  tau_ts_hat = round(make_pos_semi_def(tau_ts), 5)
+  mu_t_hat = v_t_hat
+  
+  #decomposition of resulting covariance matrix
+  tau_eigens  =  estimate_eigenfunctions(tau_ts_hat, pve = 0.98)
+  
+  #estimate from Hall 2008
+  d = t((Curves_binary - matrix(rep(logit(mu_t_hat), each = N), ncol = D)) /
+          matrix(rep(d_logit(mu_t_hat), each = N), ncol = D))
+  
+  #it's small enough to use solve in simulation scenarios
+  sigma_inv = solve(tau_ts_hat)
+  
+  d_test = t((Curves_binary_test - matrix(rep(logit(mu_t_hat), each = N_test), ncol = D)) /
+               matrix(rep( d_logit(mu_t_hat), each = N_test), ncol = D))
+  
+  #estimate scores via approximation presented in Hall 2008
+  score_coef = t(t(matrix(rep(tau_eigens$eigen_vals1, each = N), nrow = N))*
+                   (t(tau_eigens$eigen_funcs1)%*%sigma_inv%*%d))
+  
+  #estimate scores in testing set via approximation presented in Hall 2008
+  score_coef_test = t(t(matrix(rep(tau_eigens$eigen_vals1, each = N_test), nrow = N_test))*
+                        (t(tau_eigens$eigen_funcs1)%*%sigma_inv%*%d_test))
+  
+  return(list(score_coef, score_coef_test))
+  
+}
+
+
+
+
+#####
+#Function: To apply the methods form Dai et al 2017
+#
+#Inputs: 
+# Curves: N x M observed for N individuals at M time points. This are Gaussian observations not binary
+# Classes: Vector of classes for each individual
+# pve: Proportion of variance explained 
+# fix_number_of_functions: If user wanted to fix number of eigenfunctions and not use PVE
+#
+#Output: 
+# Parsimonious representation for the functions,
+# i.e. mean function, eigenfunction, variance, eigenvalues
+#
+# Notes: This is used for the Latent Curves classifier in the simulation study
+#####
+fpca_estimate_functions_dai <-  function(Curves, Classes, pve=0.98, 
+                                         fix_number_of_functions = 0){
+  
+  #Get sample  estimates of the covariance matrices for each group as per paper
+  Ks1 = cov(Curves[Classes==1,])
+  Ks2 = cov(Curves[Classes==2,])
   Classes_train = Classes
+  #get prior distributions
   priors =  c(table(Classes_train)/length(Classes_train))
+  #Estimate pooled covariance
   K_s = Ks1*priors[1]+Ks2*priors[2]
   D = dim(K_s)[1]
-  #Ys = cbind(as.vector(K_s), rep(1:D, D), as.vector(t(kronecker(matrix(1, ncol=D) , 1:D) )))
-  #remove diagonals to remove excess error
-  #Ys = Ys[which(Ys[,2]!=Ys[,3]), ]
-  #K_s2 = smooth.2d(Ys[,1], ind = Ys[, 2:3] , nrow = D, ncol= D, theta = 4)
-  #K_s = K_s2$z
+  
+  #ensure estimated matrix is semi-positive definite
   K_s = make_pos_semi_def(K_s)
+  #get eigenfunctions for these matrix
   fpca_results = estimate_eigenfunctions(K_s, pve, fix_number_of_functions)
+  
   fpca_results$eigen_funcs1 = fpca_results$eigen_funcs1*sqrt(D)
   fpca_results$eigen_vals1 = fpca_results$eigen_vals1/D
   sigma = mean(diag(var(Curves)-K_s))
@@ -467,285 +760,187 @@ fpca_estimate_functions_dai <-  function(Curves, Classes, pve=0.98, fix_number_o
 }
 
 
-qda_updated2 = function(scores, classes, prior_g, scores_test){
-  
-  train_model = qda(scores, classes, prior = prior_g)
-  test_dat = predict(train_model, scores_test)
-  guess = apply(test_dat$posterior, 1, which.max)
-  return(guess)
-  
-  
+
+
+#Function to return the logit
+logit <- function(x){
+  return(log(x/(1-x)))
 }
 
-nb_updated2 = function(scores, classes, prior_g, scores_test){
-  
-  naive_bayes_dat = rbind.data.frame(scores, scores_test)
-  naive_bayes_dat = cbind.data.frame(classes = c(classes, rep(NA, dim(scores_test)[1])),
-                                     naive_bayes_dat)
-  naive_bayes_dat$classes = factor(naive_bayes_dat$classes)
-  
-  N_train = length(classes)
-  
-  naive_bayes_dat_train = naive_bayes_dat[1:N_train,]
-  naive_bayes_dat_test = naive_bayes_dat[-(1:N_train),-1]
-  rf1 = naive_bayes(classes~., data = naive_bayes_dat_train, usekernel = T, bw = "nrd0")
-  guess = predict(rf1, naive_bayes_dat_test, type = "class")
-  
-  return(guess)
-  
+#Function to return the inverse of the logit
+invlogit <- function(x){
+  return(1/(1+exp(-x)))
 }
 
-get_cdf_den = function(densities, scores, classes, i){
-  
-  score_cur = scores[i,]
-  class_cur = classes[i]
-  
-  dens_cur = densities[[class_cur]]
-  cdf.vals = rep(NA, length(dens_cur))
-  for(k in 1:length(dens_cur)){
-    
-    dens_cur_k = dens_cur[[k]]
-    cdf.vals[k] = cumsum(dens_cur_k$y)[which.min(abs(dens_cur_k$x-score_cur[k]))]
-    cdf.vals[k] = cdf.vals[k]/sum(dens_cur_k$y)
-    
-  }
-  return(cdf.vals) 
-}
-
-get_pdf_den = function(densities, scores, classes, i){
-  
-  score_cur = scores[i,]
-  class_cur = classes[i]
-  
-  dens_cur = densities[[class_cur]]
-  cdf.vals = rep(NA, length(dens_cur))
-  for(k in 1:length(dens_cur)){
-    
-    dens_cur_k = dens_cur[[k]]
-    cdf.vals[k] = dens_cur_k$y[which.min(abs(dens_cur_k$x-score_cur[k]))]*(max(dens_cur_k$x)-min(dens_cur_k$x))/length(dens_cur_k$x)
-    
-  }
-  return(cdf.vals) 
-}
-
-get_pdf_den2 = function(densities, scores, classes, i){
-  
-  score_cur = scores[i,]
-  class_cur = classes[i]
-  dens_cur = densities[[class_cur]]
-  cdf.vals = rep(NA, length(dens_cur))
-  
-  for(k in 1:length(dens_cur)){
-    
-    dens_cur_k = dens_cur[[k]]
-    
-    approx_fun_den = approxfun(dens_cur_k)
-    xnew = score_cur[k]
-    if(xnew<=min(dens_cur_k$x)){
-      xnew=min(dens_cur_k$x)
-    }
-    if(xnew>=max(dens_cur_k$x)){
-      xnew=max(dens_cur_k$x)
-    }
-    
-    cdf.vals[k]  = approx_fun_den(xnew)
-    
-  }
-  return(cdf.vals) 
-}
-
-#function to estimate the predicted values when h is known
-nb_updated = function(scores, classes, prior_g, scores_test, h = 1.06){
-  
-  #grid search to find h
-  
-  if(length(scores)==length(classes)){
-    scores = matrix(scores, ncol = 1) 
-    scores_test = matrix(scores_test, ncol = 1) 
-  }
-  
-  nd = dim(scores)[2]
-  densities = list()
-  for(i in 1:2){
-    densities[[i]]=list()
-    for(k in 1:nd){
-      densities[[i]][[k]] = density(scores[classes==i,k],
-                                    kernel = "gaussian", 
-                                    bw = h*sd(scores[classes==i,k]))
-    }
-  }
-  
-  n_test = dim(scores_test)[1]
-  p.mat = matrix(NA, nrow = n_test, ncol = length(prior_g))
-  vec = matrix(1:n_test, ncol = 1)
-  for(i in 1:2){
-    
-    pdf.vals.test.1 = t(apply(vec, 1,
-                              function(x)  get_pdf_den2(densities, scores_test, rep(i, n_test), x)))
-    pdf_vals = apply(pdf.vals.test.1, 1, prod)
-    p.mat[,i] = prior_g[i]* pdf_vals
-    
-  }
-  guess = apply(p.mat, 1, which.max)
-  
-  return(guess)
-  
-}
-
-#grid search to estimate predicted values and estimate the values of h
-nb_updated_grid = function(scores, classes, prior_g, scores_test,
-                           grid_search = T, min.h = 0.01, max.h = 1,
-                           CV = 10, n_grid = 25, return_h = F, return_prob = F){
-  
-  vec.cv = matrix(1:CV, ncol = 1)
-  #grid search to find h
-  
-  #add extra incase unequal distribution of groups 
-  cvgroups = rep(1:CV, (length(classes)/CV+1))
-  #remove unneeded values
-  cvgroups = cvgroups[1:length(classes)]
-  #randomly assign groups
-  cvgroups = sample(cvgroups, size = length(classes), replace = F)
-  
-  if(length(scores)==length(classes)){
-    scores = matrix(scores, ncol = 1) 
-    scores_test = matrix(scores_test, ncol = 1) 
-  }
-  
-  get.cv.h = function(h.val){
-    groups.probs = 
-      apply(vec.cv, 1, function(x) 
-        mean(#get guess
-          nb_updated(scores[cvgroups!=x,], classes[cvgroups!=x], 
-                     c(table(classes[cvgroups!=x])/length(classes[cvgroups!=x])) , #define the new prior probs 
-                     scores[cvgroups==x,], h = h.val) ==  classes[cvgroups==x]))
-    #get cv.acc
-    mean(groups.probs)
-  }
-  
-  grid.vals.h = matrix(seq(min.h, max.h, length.out = n_grid), ncol = 1)
-  h.accs = apply(grid.vals.h, 1, function(h) get.cv.h(h))
-  
-  h = grid.vals.h[which.max(h.accs)]
-  #h = grid.vals.h[max(which(h.accs==max(h.accs)))]
-  
-  
-  nd = dim(scores)[2]
-  ng = length(unique(classes))
-  densities = list()
-  for(i in 1:ng){
-    densities[[i]]=list()
-    for(k in 1:nd){
-      densities[[i]][[k]] = density(scores[classes==i,k],
-                                    kernel = "gaussian", 
-                                    bw = h*sd(scores[classes==i,k]))
-    }
-  }
-  
-  n_test = dim(scores_test)[1]
-  p.mat = matrix(NA, nrow = n_test, ncol = length(prior_g))
-  vec = matrix(1:n_test, ncol = 1)
-  for(i in 1:ng){
-    
-    pdf.vals.test.1 = t(apply(vec, 1,
-                              function(x)  get_pdf_den2(densities, scores_test, rep(i, n_test), x)))
-    pdf_vals = apply(pdf.vals.test.1, 1, prod)
-    p.mat[,i] = prior_g[i]* pdf_vals
-    
-  }
-  
-  if(return_prob){
-    return(p.mat/rowSums(p.mat))
-  }
-  
-  guess = apply(p.mat, 1, which.max)
-  
-  #print(h)
-  
-  if(return_h){
-    return(h)
-  }
-  return(guess)
-  
+#function to return the derivative of the logit
+d_logit <- function(x){
+  return( logit(x)*(1-logit(x)))
 }
 
 
 
-regression_f = function(z, dta, lm_structure){
-  lm2 <- lm(lm_structure, data = subset(dta, dta$id==z))
-  return(lm2$coefficients)
-}
-
-regression_g = function(z, Curves, tt, k=10, method="REML"){
-  z1 = Curves[z,]
-  gam1 <- gam(z1~s(tt, bs = "cr", m=2, k = k), 
-              family="binomial", method = method)
-  return(gam1$fitted.values)
-}
-
-regression_bf = function(z, dta, lm_structure, prior_scales_test){
-  bayesglm1 = bayesglm(lm_structure,
-                       family = gaussian,
-                       data = subset(dta, dta$id==z),
-                       prior.scale = sqrt(prior_scales_test),
-                       prior.df = Inf, scaled = F)
-  return(bayesglm1$coefficients)
-}
-
-regression_bf2 = function(z, dta, lm_structure, prior_scales_test){
-  bayesglm1 = bayesglm(lm_structure,
-                       family = binomial(),
-                       data = subset(dta, dta$id==z),
-                       prior.scale = sqrt(prior_scales_test),
-                       prior.df = Inf, scaled = F)
-  return(bayesglm1$coefficients)
-}
 
 
-eigen_funcs1 = fpca.cur$efunctions
-eigen_funcs_true = eigen_funcs1
-mu_t_hat = fpca.cur$mu
-eigen_vals = fpca.cur$evalues
-eigen_vals_true = fpca.cur$evalues
-mu_t_hat_true = mu_t_hat
-scores_train_true = scores_train
+########
+#Unneeded Functions
+# 
+#fpca_estimate_functions <-  function(Curves, pve=0.98, fix_number_of_functions = 0){
+# 
+# K_s = var(Curves)
+# 
+# D = dim(K_s)[1]
+# Ys = cbind(as.vector(K_s), rep(1:D, D), as.vector(t(kronecker(matrix(1, ncol=D) , 1:D) )))
+# #remove diagonals to remove excess error
+# Ys = Ys[which(Ys[,2]!=Ys[,3]), ]
+# K_s2 = smooth.2d(Ys[,1], ind = Ys[, 2:3] , nrow = D, ncol= D, theta = 4)
+# K_s = K_s2$z
+# K_s = make_pos_semi_def(K_s)
+# 
+# #get eigenvals and eigenvectors
+# fpca_results = estimate_eigenfunctions(K_s, pve, fix_number_of_functions)
+# #correct values for normality
+# fpca_results$eigen_funcs1 = fpca_results$eigen_funcs1*sqrt(D)
+# fpca_results$eigen_vals1 = fpca_results$eigen_vals1/D
+# 
+# #get sample mean for mean function
+# z1 = as.vector(colMeans(Curves))
+# #apply a smoother
+# gam1 <- gam(z1~s(tt, bs = "cr", m=2, k = 10), 
+#             family="gaussian", method = "REML")
+# mu_hat = gam1$fitted.values
+# 
+# #return vals
+# return(list(eigen_vals=fpca_results$eigen_vals1,
+#             eigen_funcs=fpca_results$eigen_funcs1,
+#             mu_hat = mu_hat))
+# 
+# }
+#
+#
+# qda_updated2 = function(scores, classes, prior_g, scores_test){
+#   
+#   train_model = qda(scores, classes, prior = prior_g)
+#   test_dat = predict(train_model, scores_test)
+#   guess = apply(test_dat$posterior, 1, which.max)
+#   return(guess)
+#   
+#   
+# }
+# 
+# nb_updated2 = function(scores, classes, prior_g, scores_test){
+#   
+#   naive_bayes_dat = rbind.data.frame(scores, scores_test)
+#   naive_bayes_dat = cbind.data.frame(classes = c(classes, rep(NA, dim(scores_test)[1])),
+#                                      naive_bayes_dat)
+#   naive_bayes_dat$classes = factor(naive_bayes_dat$classes)
+#   
+#   N_train = length(classes)
+#   
+#   naive_bayes_dat_train = naive_bayes_dat[1:N_train,]
+#   naive_bayes_dat_test = naive_bayes_dat[-(1:N_train),-1]
+#   rf1 = naive_bayes(classes~., data = naive_bayes_dat_train, usekernel = T, bw = "nrd0")
+#   guess = predict(rf1, naive_bayes_dat_test, type = "class")
+#   
+#   return(guess)
+#   
+# }
+# 
+# 
+# regression_f = function(z, dta, lm_structure){
+#   lm2 <- lm(lm_structure, data = subset(dta, dta$id==z))
+#   return(lm2$coefficients)
+# }
+#
+#
+# inv.mat <- function(mat){
+#   
+#   x2 = svd2(mat)
+#   x2$d=ifelse(x2$d>0, x2$d, 0)
+#   mat=round(x2$u%*%diag(x2$d)%*%t(x2$v), 7)
+#   
+#   chol_mat = chol(mat)
+#   chol_mat_inv = forwardsolve(t(chol_mat), diag(dim(mat)[1]))
+#   chol_mat_inv = backsolve(chol_mat, chol_mat_inv)
+#   
+#   return(chol_mat_inv)
+#   
+# }
+#
+# 
+# get_cdf_den = function(densities, scores, classes, i){
+#   
+#   score_cur = scores[i,]
+#   class_cur = classes[i]
+#   
+#   dens_cur = densities[[class_cur]]
+#   cdf.vals = rep(NA, length(dens_cur))
+#   for(k in 1:length(dens_cur)){
+#     
+#     dens_cur_k = dens_cur[[k]]
+#     cdf.vals[k] = cumsum(dens_cur_k$y)[which.min(abs(dens_cur_k$x-score_cur[k]))]
+#     cdf.vals[k] = cdf.vals[k]/sum(dens_cur_k$y)
+#     
+#   }
+#   return(cdf.vals) 
+# }
+# 
+#
+# get_pdf_den = function(densities, scores, classes, i){
+#   
+#   score_cur = scores[i,]
+#   class_cur = classes[i]
+#   
+#   dens_cur = densities[[class_cur]]
+#   cdf.vals = rep(NA, length(dens_cur))
+#   for(k in 1:length(dens_cur)){
+#     
+#     dens_cur_k = dens_cur[[k]]
+#     cdf.vals[k] = dens_cur_k$y[which.min(abs(dens_cur_k$x-score_cur[k]))]*(max(dens_cur_k$x)-min(dens_cur_k$x))/length(dens_cur_k$x)
+#     
+#   }
+#   return(cdf.vals) 
+# }
+#
+#
+#
+# eigen_funcs1 = fpca.cur$efunctions
+# eigen_funcs_true = eigen_funcs1
+# mu_t_hat = fpca.cur$mu
+# eigen_vals = fpca.cur$evalues
+# eigen_vals_true = fpca.cur$evalues
+# mu_t_hat_true = mu_t_hat
+# scores_train_true = scores_train
+# 
+# #Code to estimate the densities
+# #Selected h multiplier for kernel was determine for this data set from 5-fold CV
+# h.val=0.09
+# #scores_train N x K matrix 
+# # Classes_train vector containing group assignment for N observations
+# data.train = data.frame(scores_train, Classes_train)
+# dens.dat = list()
+# ndf = dim(scores_train)[2]
+# for(i in 1:ndf){
+#   
+#   #get the scores for each group for the component
+#   x.class1 = data.train[,i][data.train$Classes_train==1]
+#   x.class2 = data.train[,i][data.train$Classes_train==2]
+#   
+#   #estimate the density for each distribution 
+#   # force same from/to values to define densities on same range
+#   # n: number of inputs
+#   dens1 = density(x.class1, kernel = "gaussian", 
+#                   from = min(x.class1, x.class2)-0.5*sd(c(x.class1, x.class2)), 
+#                   to = max(x.class1, x.class2)+0.5*sd(c(x.class1, x.class2)),
+#                   n = 1000, 
+#                   bw = h.val*sd(x.class1))
+#   dens2 = density(x.class2, kernel = "gaussian", 
+#                   from = min(x.class1, x.class2)-0.5*sd(c(x.class1, x.class2)), 
+#                   to = max(x.class1, x.class2)+0.5*sd(c(x.class1, x.class2)),
+#                   n = 1000, 
+#                   bw = h.val*sd(x.class2))
+#   
+#   dens.dat[[i]] = data.frame(score = dens1$x, d1.not = dens1$y, d1.bot = dens2$y)
+# }
 
-#h.val = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test, return_h = T )
-#from previous analaysis
-h.val=0.09
-dim(scores_train)
-data.train = data.frame(scores_train, Classes_train)
-#data.test = data.frame(scores_test, Classes_test)
-dens.dat = list()
-ndf = dim(scores_train)[2]
-for(i in 1:ndf){
-  
-  psi_class1 = data.train[,i][data.train$Classes_train==1]
-  psi_class2 = data.train[,i][data.train$Classes_train==2]
-  
-  dens1 = density(psi_class1, kernel = "gaussian", from = min(psi_class1, psi_class2)-0.25*sd(psi_class2), 
-                  to = max(psi_class1, psi_class2)+0.5*sd(psi_class2), n = 500, 
-                  bw = h.val*sd(psi_class1))
-  dens2 = density(psi_class2, kernel = "gaussian", from = min(psi_class1, psi_class2)-0.25*sd(psi_class2), 
-                  to = max(psi_class1, psi_class2)+0.5*sd(psi_class2), n = 500, 
-                  bw = h.val*sd(psi_class2))
-  
-  dens.dat[[i]] = data.frame(score1 = dens1$x, d1.not = dens1$y, d1.bot = dens2$y)
-}
 
-get.scores = function(i, n1,n2){
-  
-  cdf.vals1 = runif(n1, 0, 1)
-  cdf.vals2 = runif(n2, 0, 1)
-  dens.dat.cur = dens.dat[[i]]
-  
-  dens.dat.cur$cdf1 = cumsum(dens.dat.cur$d1.bot)/sum(dens.dat.cur$d1.bot)
-  dens.dat.cur$cdf2 = cumsum(dens.dat.cur$d1.not)/sum(dens.dat.cur$d1.not)
-  
-  scores.n1 = sapply(cdf.vals1, function(x) dens.dat.cur$score1[which.min(abs(x-dens.dat.cur$cdf1))])
-  scores.n2 = sapply(cdf.vals2, function(x) dens.dat.cur$score1[which.min(abs(x-dens.dat.cur$cdf2))])
-  
-  return(c(scores.n1, scores.n2))
-  
-}
 
