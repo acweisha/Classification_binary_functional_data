@@ -6,7 +6,7 @@
 #
 ##################
 
-#dependancies to run all of the code
+#dependencies to run all of the code
 library(fields)
 library(parallel)
 library(xtable)

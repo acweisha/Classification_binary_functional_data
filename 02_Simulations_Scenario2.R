@@ -21,7 +21,7 @@ Ns = c(50, 300, 1000)
 #Number of cores able to run code on
 numCores_to_run = 16
 
-#for paraellel processing
+#for parallel processing
 numCores <- detectCores() # get the number of cores available
 
 
@@ -95,7 +95,7 @@ core_function = function(i){
   tt=seq(0,1, len=D)
 
   #generate N*2 (N for each group) curves for the given scenario, we are generating one curve from each class per individual and then assigning class after
-  Curves = generate_data(scneario = 2, grid = grid,  N=2*N,  p = p, 
+  Curves = generate_data(scenario = 2, grid = grid,  N=2*N,  p = p, 
                            sigma = 0, binary = T)
 
   #organize generated curves by class
@@ -103,7 +103,7 @@ core_function = function(i){
   Y1 = t(Curves[-(1:(dim(Curves)[1]/2)),])
   
   #generate N_test*2 (N_test for each group) curves for the given scenario  
-  Curves = generate_data( scneario = 2, grid = grid,  N=2*N_test,  p = p,
+  Curves = generate_data( scenario = 2, grid = grid,  N=2*N_test,  p = p,
                                     sigma = 0, binary = T)
   
   #organize generated testing curves by class
@@ -397,15 +397,13 @@ core_function = function(i){
   
   #for class 1 change the variance
   lambda_k = exp(-Ks/3)
-  #prior_scales_test = sqrt(lambda_k)
-  prior_scales_test = lambda_k
+  prior_scales_test = sqrt(lambda_k)
   vec = matrix(which(Classes_train==1), ncol = 1)
   scores_train1 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
   
   #for class 2 change the variance
   lambda_k = exp(-Ks/2)
-  #prior_scales_test = sqrt(lambda_k)
-  prior_scales_test = lambda_k
+  prior_scales_test = sqrt(lambda_k)
   vec = matrix(which(Classes_train==2), ncol = 1)
   scores_train2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
   
@@ -482,14 +480,14 @@ core_function = function(i){
   tt=seq(0,1, len=D)
   
   #estimate non-binary functions. Just like before generating 2*N curves (N for each group)
-  Curves = generate_data(scneario = 2, grid = grid,  N=2*N,  p = p,
+  Curves = generate_data(scenario = 2, grid = grid,  N=2*N,  p = p,
                          sigma = 0.01, binary = F)
 
   Y0 = t(Curves[1:(dim(Curves)[1]/2),])
   Y1 = t(Curves[-(1:(dim(Curves)[1]/2)),])
 
   #estimate non-binary functions, 2*N_test curves (N for each group)
-  Curves = generate_data(scneario = 2, grid = grid,  N=2*N_test,  p = p,
+  Curves = generate_data(scenario = 2, grid = grid,  N=2*N_test,  p = p,
                          sigma = 0.01, binary = F)
   Y0_test = t(Curves[1:(dim(Curves)[1]/2),])
   Y1_test = t(Curves[-(1:(dim(Curves)[1]/2)),])
@@ -501,7 +499,6 @@ core_function = function(i){
   Curves_train = Curves_train[(1:N)+N*(Classes_train-1),]
   Curves_test = Curves_test[(1:(N_test))+(N_test)*(Classes_test-1),]
 
-  
   N_train = length(Classes_train)
 
   st = Sys.time()

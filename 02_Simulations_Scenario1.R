@@ -21,7 +21,7 @@ Ns = c(50, 300, 1000)
 #Number of cores able to run code on
 numCores_to_run = 16
 
-#for paraellel processing
+#for parallel processing
 numCores <- detectCores() # get the number of cores available
 
 
