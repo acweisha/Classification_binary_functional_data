@@ -1,5 +1,5 @@
 ##################
-#Simulation for Scenario 1 of 
+#Simulation for Scenario 3 of 
 #"Classification of Social Media Users Using a Generalized Functional Analysis"
 #
 #Author: Anthony Weishampel
@@ -8,6 +8,13 @@
 # Make sure to run 01_functions file first
 ##################
 
+
+###
+#For Scenario 3 You need to load the Rdata file which contains the information to mimic the data
+###
+
+#change dir to file location of scenario3
+load("/dir/scenario3_data.RData")
 
 #Needs to be changed for the three values of D
 D = 150
@@ -95,7 +102,7 @@ core_function = function(i){
   tt=seq(0,1, len=D)
 
   #generate N*2 (N for each group) curves for the given scenario, we are generating one curve from each class per individual and then assigning class after
-  Curves = generate_data(scenario = 1, grid = grid,  N=2*N,  p = p, 
+  Curves = generate_data(scneario = 3, grid = grid,  N=2*N,  p = p, 
                            sigma = 0, binary = T)
 
   #organize generated curves by class
@@ -103,7 +110,7 @@ core_function = function(i){
   Y1 = t(Curves[-(1:(dim(Curves)[1]/2)),])
   
   #generate N_test*2 (N_test for each group) curves for the given scenario  
-  Curves = generate_data( scenario = 1, grid = grid,  N=2*N_test,  p = p,
+  Curves = generate_data( scneario = 3, grid = grid,  N=2*N_test,  p = p,
                                     sigma = 0, binary = T)
   
   #organize generated testing curves by class
@@ -154,10 +161,23 @@ core_function = function(i){
   vec = matrix(1:(N_train), ncol = 1)
   smoothed_x = logit(t(apply(vec, 1, function(x) regression_g(x, Curves_train, tt))))
   
+  # remove extreme smoothed curves from estimates, 
+  # scenario 3 has scenarios where gam fails to converge
+  smoothed_x2 = smoothed_x
+  colmn = which(smoothed_x2< -30)%/% nrow(smoothed_x2)+1
+  rows = which(smoothed_x2< -30) %% nrow(smoothed_x2)
+  rows = ifelse(rows==0, nrow(smoothed_x2), rows)
+  rows_to_rm = unique(rows)
+  vec = matrix(rows_to_rm, ncol = 1)
+  if(length(rows_to_rm)>0){
+    smoothed_x2 = smoothed_x2[-rows_to_rm,]
+  }
+  
+  
   ##
   #Step 2 of the proposed method
   ##
-  fpca.cur2 = fpca.face(smoothed_x, pve = 0.98, p=3, m=2, knots = 6) #lambda selected via grid search optim, #p=degree of splines
+  fpca.cur2 = fpca.face(smoothed_x2, pve = 0.98, p=3, m=2, knots = 6) #lambda selected via grid search optim, #p=degree of splines
   #correct fpca.cur2 eigenval values b/c too large
   #get multiplier is function of D in fact its 1/D
   #get_multiplier = sum((fpca.cur2$efunctions[,1])^2/length(fpca.cur2$efunctions[,1]))
@@ -241,7 +261,7 @@ core_function = function(i){
   #get propability of being in each group
   prior_g = c(table(Classes_train)/length(Classes_train))
   #run non parametric bayes classifier
-  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test, min.h = 0.5, max.h = 1.5)
+  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test)
 
   #clock the time
   et = Sys.time()
@@ -275,7 +295,7 @@ core_function = function(i){
   scores_test = gfpca_scores[[2]]
 
   #Fit the non-parametric Bayes classifier
-  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test, min.h = 0.5, max.h = 1.5)
+  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test)
 
   et = Sys.time()
   time_diff = et - st
@@ -292,7 +312,7 @@ core_function = function(i){
   #Method 3: Spline+mFPCA
   ##
 
-
+  #set start time
   st = Sys.time()
 
   tt=seq(0,1, len=D)
@@ -305,9 +325,37 @@ core_function = function(i){
   vec = matrix(1:(N_test), ncol = 1)
   smoothed_x_test = logit(t(apply(vec, 1, function(x) regression_g(x, Curves_test, tt))))
 
+  
+  #replace extreme values of gam when it does not converge, replace with low contanst prob
+  # this is b/c instances when it doesn't converge means there are not enough observations
+  # we also do not want to remove these values because to classify new curves we need the
+  # scores from fpca
+  smoothed_x2 = smoothed_x
+  colmn = which(smoothed_x2< -30)%/% nrow(smoothed_x2)+1
+  rows = which(smoothed_x2< -30) %% nrow(smoothed_x2)
+  rows = ifelse(rows==0, nrow(smoothed_x2), rows)
+  rows_to_rm = unique(rows)
+  vec = matrix(rows_to_rm, ncol = 1)
+  if(length(rows_to_rm)>0){
+    smoothed_x2[rows_to_rm,] = logit(min(rowMeans(Curves_train)[rowMeans(Curves_train)>0]))
+  }
+  Classes_train2 = classes_train
+  
+  #replace extreme values of gam when it does not converge, replace with low contanst prob
+  smoothed_x2_test = smoothed_x_test
+  colmn = which(smoothed_x2_test< -30)%/% nrow(smoothed_x2_test)+1
+  rows = which(smoothed_x2_test< -30) %% nrow(smoothed_x2_test)
+  rows = ifelse(rows==0, nrow(smoothed_x2_test), rows)
+  rows_to_rm = unique(rows)
+  vec = matrix(rows_to_rm, ncol = 1)
+  if(length(rows_to_rm)>0){
+    smoothed_x2_test[rows_to_rm,] = logit(min(rowMeans(Curves_train)[rowMeans(Curves_train)>0]))
+  }
+  
+  
   ##Step 2 for mFPCA
-  fpca.cur2 = fpca.face(smoothed_x, pve = 0.98, p=3, m=2, knots = 6) #lambda selected via grid search optim, #p=degree of splines
-  #correct fpca.cur2 eigenval values b/c too large
+  fpca.cur2 = fpca.face(smoothed_x2, pve = 0.98, p=3, m=2, knots = 6) 
+  #correct fpca.cur2 eigenval values b/c too large and not what we want
   get_multiplier = 1/D
   fpca.cur = fpca.cur2
   fpca.cur$efunctions = fpca.cur2$efunctions/sqrt(get_multiplier) 
@@ -315,12 +363,12 @@ core_function = function(i){
   fpca.cur$scores = fpca.cur2$scores*sqrt(get_multiplier)
   
   #testing set
-  fpca.cur2 = fpca.face(smoothed_x, pve = 0.98, p=3, m=2, knots = 6, 
-                        Y.pred = smoothed_x_test) #lambda selected via grid search optim, #p=degree of splines
+  fpca.cur2 = fpca.face(smoothed_x2, pve = 0.98, p=3, m=2, knots = 6,
+                        Y.pred = smoothed_x2_test)
   #correct fpca.cur2 eigenval values b/c too large
-  get_multiplier = 1/D
+  get_multiplier = sum((fpca.cur2$efunctions[,1])^2/length(fpca.cur2$efunctions[,1]))
   fpca.cur.test = fpca.cur2
-  fpca.cur.test$efunctions = fpca.cur2$efunctions/sqrt(get_multiplier) 
+  fpca.cur.test$efunctions = fpca.cur2$efunctions/sqrt(get_multiplier)
   fpca.cur.test$evalues = fpca.cur2$evalues*get_multiplier
   fpca.cur.test$scores = fpca.cur2$scores*sqrt(get_multiplier)
   
@@ -330,7 +378,7 @@ core_function = function(i){
   scores_test = fpca.cur.test$scores
   prior_g = c(table(Classes_train)/length(Classes_train))
 
-  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test, min.h = 0.5, max.h = 1.5)
+  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test)
   et = Sys.time()
   time_diff = et - st
 
@@ -349,48 +397,37 @@ core_function = function(i){
   #start time
   st = Sys.time()
 
-  #true means of coefficients
-  mu0<-  c(0, -0.5, 1, -0.5,1,-0.5, 0)
-  mu1<- c(0, -0.75, 0.75, -0.15,1.4,0.1, 0)
-
-
-  k=7
+  #set the true mean functions
+  mu_true0 = rep(0, length(grid))
+  mu_true1 = rep(0, length(grid))
+  mu_true = mu_true0
+  
+  #Use the true  eigenfunctions
+  k=9
   Ks= 1:k
-  lambda_k = (Ks)^(-2)
-
-  psis = rep(1, length(grid))
-
-  for(i3 in 1:((k-1)/2)){
-
-    p1 = (i3)*2
+  lambda_k = exp(-Ks/3)
+  psis = matrix(rep(1, D), ncol = 1)
+  
+  for(z4 in 1:((k-1)/2)){
+    p1 = (z4)*2
     psi_1 = sqrt(2)*cos(p1*pi*grid)
     psi_2 = sqrt(2)*sin(p1*pi*grid)
-
     psis = cbind(psis , psi_1, psi_2)
-
+    
   }
-
-  #only include the ones which help classifier
-  k = 6
-  lambda_k = lambda_k[1:k]
-  psis = psis[,1:k]
-  #true mean
-  mu_true = c(0, -0.625, 0.875, -0.325, 1.200, -0.200)
-  mu_true = mu_true%*%t(psis)
-
-  #Set up bayesglm Step 4
-  # first for training set, same as earlier just on the true eigenfunctions
+  
+  #set up the data frame for the bayesglm classifier
   fit = list(mu = mu_true,
              evalues = lambda_k,
              efunctions = psis)
   mu_t_hat = fit$mu
   eigen_vals1 = fit$evalues
   eigen_funcs1 = fit$efunctions
-
+  
   dta = data.frame(index = rep(grid, N_train),
                    value = c(t(Curves_train)),
                    id = rep(1:N_train, each = D))
-
+  
   npc = length(eigen_vals1)
   if(npc>1){
     for (z in 1:npc) {
@@ -400,24 +437,36 @@ core_function = function(i){
     dta = cbind(dta, matrix(eigen_funcs1, ncol =1))
   }
   names(dta)[4:(4 + npc - 1)] <- c(paste0("psi", 1:npc))
-  dta$mu = rep(mu_t_hat , N_train)
-
-  glm_structure = paste(paste0("psi", 1:npc), collapse = "+")
-  glm_structure = paste("value ~ -1 + offset(mu) +" , glm_structure , sep="")
-
-  prior_scales_test = eigen_vals1
-
-  vec = matrix(1:N_train, ncol = 1)
-  scores_train = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
-
+  #dta$mu = rep(mu_t_hat , N_train)
+  dta$mu = c(rep(mu_true0, N), rep(mu_true1, N))
   
-  # Then get the scores for the testing set, same as earlier just on the true eigenfunctions
+  glm.structure = paste(paste0("psi", 1:npc), collapse = "+")
+  glm_structure = paste("value ~ -1 + offset(mu) +" , glm.structure , sep="")
+  
+  #for class 1 change the variance
+  lambda_k = exp(-Ks/3)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  vec = matrix(which(Classes_train==1), ncol = 1)
+  scores_train1 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  
+  #for class 2 change the variance
+  lambda_k = exp(-Ks/2)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  vec = matrix(which(Classes_train==2), ncol = 1)
+  scores_train2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  
+  #combine the scores...notice the change in the order from before
+  scores_train = rbind(scores_train1, scores_train2)
+  
+  #set up data frame for bayesglm for testing set same as before
   dta = data.frame(index = rep(grid, N_test),
                    value = c(t(Curves_test)),
                    id = rep(1:N_test, each = D))
-
+  
   npc = length(eigen_vals1)
-
+  
   if(npc>1){
     for (z in 1:npc) {
       dta <- cbind(dta, rep(eigen_funcs1[,z], N_test))
@@ -426,28 +475,51 @@ core_function = function(i){
     dta = cbind(dta, matrix(eigen_funcs1, ncol =1))
   }
   names(dta)[4:(4 + npc - 1)] <- c(paste0("psi", 1:npc))
-  dta$mu = rep(mu_t_hat , N_test)
-  glm_structure = paste(paste0("psi", 1:npc), collapse = "+")
-  glm_structure = paste("value ~ -1 + offset(mu) +" , glm_structure , sep="")
   
-  vec = matrix(1:N_test, ncol = 1)
-  scores_test = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
-
-  #use the scores to get fit classifier
+  dta$mu = c(rep(mu_true0, N_test/2), rep(mu_true1, N_test/2))
+  glm.structure = paste(paste0("psi", 1:npc), collapse = "+")
+  glm_structure = paste("value ~ -1 + offset(mu) +" , glm.structure , sep="")
+  
+  #set true eigenvalues
+  lambda_k = exp(-Ks/3)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  
+  #vec = matrix(1:(N_test/2), ncol = 1)
+  vec = matrix(which(Classes_test==1), ncol = 1)
+  scores_test1 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  
+  lambda_k = exp(-Ks/2)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  
+  #Get scores 
+  vec = matrix(which(Classes_test==2), ncol = 1)
+  scores_test2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, lm_structure, prior_scales_test)))
+  
+  #again notice that scores were rearranged
+  scores_test = rbind(scores_test1, scores_test2)
+  
+  #prior probability
   prior_g = c(table(Classes_train)/length(Classes_train))
-  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test, min.h = 0.5, max.h = 1.5)
-
+  
+  #data was rearranged so we have to change order of scores
+  Classes_train2 = c(rep(1, sum(Classes_train==1)), rep(2, sum(Classes_train==2)))
+  Classes_test2 = c(rep(1, sum(Classes_test==1)), rep(2, sum(Classes_test==2)))
+  
+  pred_classes = nb_updated_grid(scores_train, Classes_train2, prior_g, scores_test)
+  
   et = Sys.time()
   time_diff = et - st
-
-  #record results
-  misclass_mat[4, 1] = 1- sum(pred_classes==Classes_test)/length(Classes_test)
-  sens_mat[4,1] = sum(pred_classes==1 & Classes_test == 1)/(sum(pred_classes==2 & Classes_test == 1)+sum(pred_classes==1 & Classes_test == 1))
-  spec_mat[4,1] = sum(pred_classes==2 & Classes_test == 2)/(sum(pred_classes==2 & Classes_test == 2)+sum(pred_classes==1 & Classes_test == 2))
-  precision_mat[4,1] = sum(pred_classes==1 & Classes_test == 1)/(sum(pred_classes= 1 & Classes_test == 1)+sum(pred_classes==1 & Classes_test == 2))
+  
+  misclass_mat[4, 1] = 1- sum(pred_classes==Classes_test2)/length(Classes_test2)
+  sens_mat[4,1] = sum(pred_classes==1 & Classes_test2 == 1)/(sum(pred_classes==2 & Classes_test2 == 1)+sum(pred_classes==1 & Classes_test2 == 1))
+  spec_mat[4,1] = sum(pred_classes==2 & Classes_test2 == 2)/(sum(pred_classes==2 & Classes_test2 == 2)+sum(pred_classes==1 & Classes_test2 == 2))
+  precision_mat[4,1] = sum(pred_classes==1 & Classes_test2 == 1)/(sum(pred_classes= 1 & Classes_test2 == 1)+sum(pred_classes==1 & Classes_test2 == 2))
   time_mat[4, 1] = as.numeric(time_diff)
   
-
+  
+  
   ##
   #Oracle Latent_curves 1
   ##
@@ -458,14 +530,14 @@ core_function = function(i){
   tt=seq(0,1, len=D)
   
   #estimate non-binary functions. Just like before generating 2*N curves (N for each group)
-  Curves = generate_data(scenario = 1, grid = grid,  N=2*N,  p = p,
+  Curves = generate_data(scneario = 3, grid = grid,  N=2*N,  p = p,
                          sigma = 0.01, binary = F)
 
   Y0 = t(Curves[1:(dim(Curves)[1]/2),])
   Y1 = t(Curves[-(1:(dim(Curves)[1]/2)),])
 
   #estimate non-binary functions, 2*N_test curves (N for each group)
-  Curves = generate_data(scenario = 1, grid = grid,  N=2*N_test,  p = p,
+  Curves = generate_data(scneario = 3, grid = grid,  N=2*N_test,  p = p,
                          sigma = 0.01, binary = F)
   Y0_test = t(Curves[1:(dim(Curves)[1]/2),])
   Y1_test = t(Curves[-(1:(dim(Curves)[1]/2)),])
@@ -496,7 +568,7 @@ core_function = function(i){
   scores_test2 = t(apply(t(t(Curves_test)-kb_e$mu_hat), 1, function(x) get_scores(x)))
 
   #Fit Bayes classifier
-  pred_classes = nb_updated_grid(scores_train2, Classes_train, prior_g, scores_test2, min.h = 0.5, max.h = 1.5)
+  pred_classes = nb_updated_grid(scores_train2, Classes_train, prior_g, scores_test2)
 
   et = Sys.time()
   time_diff = et - st
@@ -510,6 +582,50 @@ core_function = function(i){
 
   return(c(misclass_mat, sens_mat, spec_mat, precision_mat, time_mat))
   
+}
+
+####
+#Set up functions for scenario 3
+####
+
+#set global evironment values for scenario 3
+eigen_funcs1 = fpca.cur$efunctions
+eigen_funcs_true = eigen_funcs1
+mu_t_hat = fpca.cur$mu
+eigen_vals = fpca.cur$evalues
+eigen_vals_true = fpca.cur$evalues
+mu_t_hat_true = mu_t_hat
+scores_train_true = scores_train
+
+#h.val is from previous analysis
+h.val=0.09
+dim(scores_train)
+#set up a dataframe to build the densities for scenario 3
+data.train = data.frame(scores_train, Classes_train)
+dens.dat = list()
+#get number of eigenvalues (K)
+ndf = dim(scores_train)[2]
+for(i in 1:ndf){
+  
+  #get the scores for each group for the component
+  x.class1 = data.train[,i][data.train$Classes_train==1]
+  x.class2 = data.train[,i][data.train$Classes_train==2]
+  
+  #estimate the density for each distribution
+  # force same from/to values to define densities on same range
+  # n: number of inputs
+  dens1 = density(x.class1, kernel = "gaussian",
+                  from = min(x.class1, x.class2),
+                  to = max(x.class1, x.class2),
+                  n = 1000,
+                  bw = h.val*sd(x.class1))
+  dens2 = density(x.class2, kernel = "gaussian",
+                  from = min(x.class1, x.class2),
+                  to = max(x.class1, x.class2),
+                  n = 1000,
+                  bw = h.val*sd(x.class2))
+  
+  dens.dat[[i]] = data.frame(score1 = dens1$x, d1.not = dens1$y, d1.bot = dens2$y)
 }
 
 #For loop over N values of interest

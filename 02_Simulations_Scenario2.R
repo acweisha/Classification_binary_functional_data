@@ -1,5 +1,5 @@
 ##################
-#Simulation for Scenario 1 of 
+#Simulation for Scenario 2 of 
 #"Classification of Social Media Users Using a Generalized Functional Analysis"
 #
 #Author: Anthony Weishampel
@@ -95,7 +95,7 @@ core_function = function(i){
   tt=seq(0,1, len=D)
 
   #generate N*2 (N for each group) curves for the given scenario, we are generating one curve from each class per individual and then assigning class after
-  Curves = generate_data(scenario = 1, grid = grid,  N=2*N,  p = p, 
+  Curves = generate_data(scneario = 2, grid = grid,  N=2*N,  p = p, 
                            sigma = 0, binary = T)
 
   #organize generated curves by class
@@ -103,7 +103,7 @@ core_function = function(i){
   Y1 = t(Curves[-(1:(dim(Curves)[1]/2)),])
   
   #generate N_test*2 (N_test for each group) curves for the given scenario  
-  Curves = generate_data( scenario = 1, grid = grid,  N=2*N_test,  p = p,
+  Curves = generate_data( scneario = 2, grid = grid,  N=2*N_test,  p = p,
                                     sigma = 0, binary = T)
   
   #organize generated testing curves by class
@@ -292,7 +292,7 @@ core_function = function(i){
   #Method 3: Spline+mFPCA
   ##
 
-
+  #set start time
   st = Sys.time()
 
   tt=seq(0,1, len=D)
@@ -349,48 +349,37 @@ core_function = function(i){
   #start time
   st = Sys.time()
 
-  #true means of coefficients
-  mu0<-  c(0, -0.5, 1, -0.5,1,-0.5, 0)
-  mu1<- c(0, -0.75, 0.75, -0.15,1.4,0.1, 0)
-
-
-  k=7
+  #set the true mean functions
+  mu_true0 = rep(0, length(grid))
+  mu_true1 = rep(0, length(grid))
+  mu_true = mu_true0
+  
+  #Use the true  eigenfunctions
+  k=9
   Ks= 1:k
-  lambda_k = (Ks)^(-2)
-
-  psis = rep(1, length(grid))
-
-  for(i3 in 1:((k-1)/2)){
-
-    p1 = (i3)*2
+  lambda_k = exp(-Ks/3)
+  psis = matrix(rep(1, D), ncol = 1)
+  
+  for(z4 in 1:((k-1)/2)){
+    p1 = (z4)*2
     psi_1 = sqrt(2)*cos(p1*pi*grid)
     psi_2 = sqrt(2)*sin(p1*pi*grid)
-
     psis = cbind(psis , psi_1, psi_2)
-
+    
   }
-
-  #only include the ones which help classifier
-  k = 6
-  lambda_k = lambda_k[1:k]
-  psis = psis[,1:k]
-  #true mean
-  mu_true = c(0, -0.625, 0.875, -0.325, 1.200, -0.200)
-  mu_true = mu_true%*%t(psis)
-
-  #Set up bayesglm Step 4
-  # first for training set, same as earlier just on the true eigenfunctions
+  
+  #set up the data frame for the bayesglm classifier
   fit = list(mu = mu_true,
              evalues = lambda_k,
              efunctions = psis)
   mu_t_hat = fit$mu
   eigen_vals1 = fit$evalues
   eigen_funcs1 = fit$efunctions
-
+  
   dta = data.frame(index = rep(grid, N_train),
                    value = c(t(Curves_train)),
                    id = rep(1:N_train, each = D))
-
+  
   npc = length(eigen_vals1)
   if(npc>1){
     for (z in 1:npc) {
@@ -400,24 +389,36 @@ core_function = function(i){
     dta = cbind(dta, matrix(eigen_funcs1, ncol =1))
   }
   names(dta)[4:(4 + npc - 1)] <- c(paste0("psi", 1:npc))
-  dta$mu = rep(mu_t_hat , N_train)
-
-  glm_structure = paste(paste0("psi", 1:npc), collapse = "+")
-  glm_structure = paste("value ~ -1 + offset(mu) +" , glm_structure , sep="")
-
-  prior_scales_test = eigen_vals1
-
-  vec = matrix(1:N_train, ncol = 1)
-  scores_train = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
-
+  #dta$mu = rep(mu_t_hat , N_train)
+  dta$mu = c(rep(mu_true0, N), rep(mu_true1, N))
   
-  # Then get the scores for the testing set, same as earlier just on the true eigenfunctions
+  glm.structure = paste(paste0("psi", 1:npc), collapse = "+")
+  glm_structure = paste("value ~ -1 + offset(mu) +" , glm.structure , sep="")
+  
+  #for class 1 change the variance
+  lambda_k = exp(-Ks/3)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  vec = matrix(which(Classes_train==1), ncol = 1)
+  scores_train1 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  
+  #for class 2 change the variance
+  lambda_k = exp(-Ks/2)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  vec = matrix(which(Classes_train==2), ncol = 1)
+  scores_train2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  
+  #combine the scores...notice the change in the order from before
+  scores_train = rbind(scores_train1, scores_train2)
+  
+  #set up data frame for bayesglm for testing set same as before
   dta = data.frame(index = rep(grid, N_test),
                    value = c(t(Curves_test)),
                    id = rep(1:N_test, each = D))
-
+  
   npc = length(eigen_vals1)
-
+  
   if(npc>1){
     for (z in 1:npc) {
       dta <- cbind(dta, rep(eigen_funcs1[,z], N_test))
@@ -426,28 +427,51 @@ core_function = function(i){
     dta = cbind(dta, matrix(eigen_funcs1, ncol =1))
   }
   names(dta)[4:(4 + npc - 1)] <- c(paste0("psi", 1:npc))
-  dta$mu = rep(mu_t_hat , N_test)
-  glm_structure = paste(paste0("psi", 1:npc), collapse = "+")
-  glm_structure = paste("value ~ -1 + offset(mu) +" , glm_structure , sep="")
   
-  vec = matrix(1:N_test, ncol = 1)
-  scores_test = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
-
-  #use the scores to get fit classifier
+  dta$mu = c(rep(mu_true0, N_test/2), rep(mu_true1, N_test/2))
+  glm.structure = paste(paste0("psi", 1:npc), collapse = "+")
+  glm_structure = paste("value ~ -1 + offset(mu) +" , glm.structure , sep="")
+  
+  #set true eigenvalues
+  lambda_k = exp(-Ks/3)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  
+  #vec = matrix(1:(N_test/2), ncol = 1)
+  vec = matrix(which(Classes_test==1), ncol = 1)
+  scores_test1 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  
+  lambda_k = exp(-Ks/2)
+  #prior_scales_test = sqrt(lambda_k)
+  prior_scales_test = lambda_k
+  
+  #Get scores 
+  vec = matrix(which(Classes_test==2), ncol = 1)
+  scores_test2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, lm_structure, prior_scales_test)))
+  
+  #again notice that scores were rearranged
+  scores_test = rbind(scores_test1, scores_test2)
+  
+  #prior probability
   prior_g = c(table(Classes_train)/length(Classes_train))
-  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test, min.h = 0.5, max.h = 1.5)
-
+  
+  #data was rearranged so we have to change order of scores
+  Classes_train2 = c(rep(1, sum(Classes_train==1)), rep(2, sum(Classes_train==2)))
+  Classes_test2 = c(rep(1, sum(Classes_test==1)), rep(2, sum(Classes_test==2)))
+  
+  pred_classes = nb_updated_grid(scores_train, Classes_train2, prior_g, scores_test, min.h = 0.5, max.h = 1.5)
+  
   et = Sys.time()
   time_diff = et - st
-
-  #record results
-  misclass_mat[4, 1] = 1- sum(pred_classes==Classes_test)/length(Classes_test)
-  sens_mat[4,1] = sum(pred_classes==1 & Classes_test == 1)/(sum(pred_classes==2 & Classes_test == 1)+sum(pred_classes==1 & Classes_test == 1))
-  spec_mat[4,1] = sum(pred_classes==2 & Classes_test == 2)/(sum(pred_classes==2 & Classes_test == 2)+sum(pred_classes==1 & Classes_test == 2))
-  precision_mat[4,1] = sum(pred_classes==1 & Classes_test == 1)/(sum(pred_classes= 1 & Classes_test == 1)+sum(pred_classes==1 & Classes_test == 2))
+  
+  misclass_mat[4, 1] = 1- sum(pred_classes==Classes_test2)/length(Classes_test2)
+  sens_mat[4,1] = sum(pred_classes==1 & Classes_test2 == 1)/(sum(pred_classes==2 & Classes_test2 == 1)+sum(pred_classes==1 & Classes_test2 == 1))
+  spec_mat[4,1] = sum(pred_classes==2 & Classes_test2 == 2)/(sum(pred_classes==2 & Classes_test2 == 2)+sum(pred_classes==1 & Classes_test2 == 2))
+  precision_mat[4,1] = sum(pred_classes==1 & Classes_test2 == 1)/(sum(pred_classes= 1 & Classes_test2 == 1)+sum(pred_classes==1 & Classes_test2 == 2))
   time_mat[4, 1] = as.numeric(time_diff)
   
-
+  
+  
   ##
   #Oracle Latent_curves 1
   ##
@@ -458,14 +482,14 @@ core_function = function(i){
   tt=seq(0,1, len=D)
   
   #estimate non-binary functions. Just like before generating 2*N curves (N for each group)
-  Curves = generate_data(scenario = 1, grid = grid,  N=2*N,  p = p,
+  Curves = generate_data(scneario = 2, grid = grid,  N=2*N,  p = p,
                          sigma = 0.01, binary = F)
 
   Y0 = t(Curves[1:(dim(Curves)[1]/2),])
   Y1 = t(Curves[-(1:(dim(Curves)[1]/2)),])
 
   #estimate non-binary functions, 2*N_test curves (N for each group)
-  Curves = generate_data(scenario = 1, grid = grid,  N=2*N_test,  p = p,
+  Curves = generate_data(scneario = 2, grid = grid,  N=2*N_test,  p = p,
                          sigma = 0.01, binary = F)
   Y0_test = t(Curves[1:(dim(Curves)[1]/2),])
   Y1_test = t(Curves[-(1:(dim(Curves)[1]/2)),])
