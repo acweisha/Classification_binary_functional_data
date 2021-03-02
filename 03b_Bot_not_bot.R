@@ -153,9 +153,9 @@ core_function = function(i){
   D = dim(Curves_train)[2]
 
   #Two Levels Levels Can easily change to 4 levels by changing the levels
-  Classes_train = c(rep(1, N_gtrain), rep(2, N_btrain), rep(3, N_itrain), rep(4, N_rtrain))
+  Classes_train = c(rep(1, N_gtrain), rep(2, N_btrain), rep(1, N_itrain), rep(1, N_rtrain))
   Classes_train = as.factor(Classes_train)
-  Classes_test = c(rep(1, N_genuine-N_gtrain), rep(2, N_bots-N_btrain), rep(3, N_i-N_itrain), rep(4, N_r-N_rtrain))
+  Classes_test = c(rep(1, N_genuine-N_gtrain), rep(2, N_bots-N_btrain), rep(1, N_i-N_itrain), rep(1, N_r-N_rtrain))
   Classes_test = as.factor(Classes_test)
 
   individuals = 1:length(Classes_train)
@@ -299,4 +299,4 @@ remove(timelines_genuine, timelines_bots,
          timelines_fs1, timelines_fs2)
 
 #save results
-#save.image("/dir/all_groups.RData")
+#save.image("/dir/bot_not_bot.RData")
