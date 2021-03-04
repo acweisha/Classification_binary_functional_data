@@ -260,6 +260,7 @@ core_function = function(i){
   return_list = list()
   return_list[[1]] = c(acc_mat) #accuracy
   return_list[[2]] = t3 #confusion matrix for proposed method
+  return_list[[3]] = t2 #confusion matrix for random forest
   
   return(return_list)
   
@@ -281,10 +282,10 @@ for(i in 1:ITER){
 
 #format results & print them
 results = matrix(unlist(results1), ncol = ITER)
-print(results)
+#print(results)
 
 results2 = matrix(unlist(results2), ncol = ITER)
-print(results2)
+#print(results2)
 
 #Print mean and sd
 print(apply(results, 1, function(x) mean(x, na.rm = T)))

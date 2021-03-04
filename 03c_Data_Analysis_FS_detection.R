@@ -260,7 +260,8 @@ core_function = function(i){
   return_list = list()
   return_list[[1]] = c(acc_mat) #accuracy
   return_list[[2]] = t3 #confusion matrix for proposed method
-  
+  return_list[[3]] = t2 #confusion matrix for random forest
+	
   return(return_list)
   
   
