@@ -16,6 +16,7 @@ library(Matrix)
 library(MASS)
 library(fields)
 library(arm)
+library(mgcv)
 
 ####
 #Function to generate data in the various scenarios
@@ -124,7 +125,7 @@ generate_data <- function(scenario = 1 , grid=seq(from = 0,to = 1, length.out = 
     c1_mat = c1%*%t(psis)
     
     # estimate variance
-    epsilon = matrix(rnorm(N*D, 0, sigma), ncol=D, nrow=N*J)
+    epsilon = matrix(rnorm(N*D, 0, sigma), ncol=D, nrow=N)
     
     Curves = beta0_true_mat + c1_mat + epsilon
     
@@ -666,12 +667,22 @@ GFPCA_estimate_para_with_test <- function(Curves_binary, Curves_binary_test){
   
   #Format for smooth function 
   Bs = cbind(as.vector(beta_ts), rep(1:D, D), as.vector(t(kronecker(matrix(1, ncol=D) , 1:D) )))
-  #remove diagonals to remove excess error
-  Bs = Bs[which(Bs[,2]!=Bs[,3]), ]
+  #Bs = Bs[which(Bs[,2]!=Bs[,3]), ]
+  #remove diagonal values
+  Bs[which(Bs[,2]==Bs[,3]), 1] = NA
+  Bs[,2:3] = Bs[,2:3]/D
+  Bs = data.frame(val = Bs[,1], t1 = Bs[,2], t2 = Bs[,3])
   #smooth the covariance matrix, need large theta because we have lots of data points
-  beta_ts2 = smooth.2d(Bs[,1], ind = Bs[, 2:3] , nrow = D, ncol= D, 
-                       cov.function = gauss.cov, theta = 4)
-  beta_ts_hat = beta_ts2$z
+  beta_ts2 = gam(val~te(t1, t2, 
+                        bs = "cr", m=2, k=5), 
+                 method = "REML", family="gaussian", data = Bs)
+  newdat = data.frame(t1 = (1:D)/D, t2 = (1:D)/D)
+  diag.vals = predict(beta_ts2, newdata = newdat)
+  return.mat = matrix(NA, nrow = D, ncol = D)
+  diag(return.mat) = diag.vals
+  return.mat[which(Bs[,2]!=Bs[,3])] = beta_ts2$fitted.value
+  beta_ts_hat = return.mat  
+  
   tau_ts = (beta_ts_hat - matrix(alpha_t_hat, ncol = 1) %*% t(alpha_t_hat))/
     (matrix(d_logit(v_t_hat), ncol = 1)%*%t(d_logit(v_t_hat)))
   
@@ -680,7 +691,11 @@ GFPCA_estimate_para_with_test <- function(Curves_binary, Curves_binary_test){
   mu_t_hat = v_t_hat
   
   #decomposition of resulting covariance matrix
-  tau_eigens  =  estimate_eigenfunctions(tau_ts_hat, pve = 0.98)
+  #tau_eigens  =  estimate_eigenfunctions(tau_ts_hat, pve = 0.98)
+  tau_eigens = estimate_eigenfunctions(tau_ts_hat, pve=0.98)
+  tau_eigens$eigen_funcs1 = tau_eigens$eigen_funcs1*sqrt(D)
+  tau_eigens$eigen_vals1 = tau_eigens$eigen_vals1/D
+  
   
   #estimate from Hall 2008
   d = t((Curves_binary - matrix(rep(logit(mu_t_hat), each = N), ncol = D)) /
