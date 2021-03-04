@@ -156,7 +156,7 @@ generate_data <- function(scenario = 1 , grid=seq(from = 0,to = 1, length.out = 
     scores1 = sapply(is, function(x) get.scores(dens.dat, x, n1, n2))
     
     #mean function globally defined
-    mu_hat = mu_t_hat
+    mu_hat = mu_t_hat_true
     eigen_funcs1 = eigen_funcs_true
     #generate latent curves 
     latent_curves = t(matrix(rep(mu_hat, n1+n2), ncol = n1+n2)) +

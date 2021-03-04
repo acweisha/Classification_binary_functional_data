@@ -445,7 +445,7 @@ core_function = function(i){
   
   #Get scores 
   vec = matrix(which(Classes_test==2), ncol = 1)
-  scores_test2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, lm_structure, prior_scales_test)))
+  scores_test2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
   
   #again notice that scores were rearranged
   scores_test = rbind(scores_test1, scores_test2)

@@ -394,29 +394,27 @@ core_function = function(i){
   #Oracle number 1: Binary but real eigenfunctions
   ###
   
-  #start time
+  individuals = 1:length(Classes_train)
+  N_train = length(Classes_train)
+  
   st = Sys.time()
+  
+  #get true mean function
+  mu_hat = mu_t_hat_true
 
-  #set the true mean functions
-  mu_true0 = rep(0, length(grid))
-  mu_true1 = rep(0, length(grid))
-  mu_true = mu_true0
+  #get_indexes of true mean
+  grid2 = seq(from = 0,to = 1, length.out = length(mu_hat))
+  grid_index = sapply(grid, function(x) which.min(abs(grid2-x)))
+  mu_true = mu_hat[grid_index]
   
-  #Use the true  eigenfunctions
-  k=9
-  Ks= 1:k
-  lambda_k = exp(-Ks/3)
-  psis = matrix(rep(1, D), ncol = 1)
+  #get the true lambda_k vlaues
+  lambda_k = apply(scores_train_true, 2, var)
+  #get the indeces of the true eigenfunctions
+  psis = eigen_funcs_true[grid_index,]
+  #only take amount equaling 98% of pve
+  lambda_k = lambda_k[1:4]
+  psis = psis[,1:4]
   
-  for(z4 in 1:((k-1)/2)){
-    p1 = (z4)*2
-    psi_1 = sqrt(2)*cos(p1*pi*grid)
-    psi_2 = sqrt(2)*sin(p1*pi*grid)
-    psis = cbind(psis , psi_1, psi_2)
-    
-  }
-  
-  #set up the data frame for the bayesglm classifier
   fit = list(mu = mu_true,
              evalues = lambda_k,
              efunctions = psis)
@@ -437,30 +435,16 @@ core_function = function(i){
     dta = cbind(dta, matrix(eigen_funcs1, ncol =1))
   }
   names(dta)[4:(4 + npc - 1)] <- c(paste0("psi", 1:npc))
-  #dta$mu = rep(mu_t_hat , N_train)
-  dta$mu = c(rep(mu_true0, N), rep(mu_true1, N))
+  dta$mu = rep(mu_t_hat , N_train)
   
   glm.structure = paste(paste0("psi", 1:npc), collapse = "+")
   glm_structure = paste("value ~ -1 + offset(mu) +" , glm.structure , sep="")
   
-  #for class 1 change the variance
-  lambda_k = exp(-Ks/3)
-  #prior_scales_test = sqrt(lambda_k)
-  prior_scales_test = lambda_k
-  vec = matrix(which(Classes_train==1), ncol = 1)
-  scores_train1 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  prior_scales_test = eigen_vals1
   
-  #for class 2 change the variance
-  lambda_k = exp(-Ks/2)
-  #prior_scales_test = sqrt(lambda_k)
-  prior_scales_test = lambda_k
-  vec = matrix(which(Classes_train==2), ncol = 1)
-  scores_train2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
+  vec = matrix(1:N_train, ncol = 1)
+  scores_train = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
   
-  #combine the scores...notice the change in the order from before
-  scores_train = rbind(scores_train1, scores_train2)
-  
-  #set up data frame for bayesglm for testing set same as before
   dta = data.frame(index = rep(grid, N_test),
                    value = c(t(Curves_test)),
                    id = rep(1:N_test, each = D))
@@ -475,48 +459,27 @@ core_function = function(i){
     dta = cbind(dta, matrix(eigen_funcs1, ncol =1))
   }
   names(dta)[4:(4 + npc - 1)] <- c(paste0("psi", 1:npc))
+  dta$mu = rep(mu_t_hat , N_test)
   
-  dta$mu = c(rep(mu_true0, N_test/2), rep(mu_true1, N_test/2))
   glm.structure = paste(paste0("psi", 1:npc), collapse = "+")
   glm_structure = paste("value ~ -1 + offset(mu) +" , glm.structure , sep="")
+
+  vec = matrix(1:N_test, ncol = 1)
+  scores_test = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
   
-  #set true eigenvalues
-  lambda_k = exp(-Ks/3)
-  #prior_scales_test = sqrt(lambda_k)
-  prior_scales_test = lambda_k
-  
-  #vec = matrix(1:(N_test/2), ncol = 1)
-  vec = matrix(which(Classes_test==1), ncol = 1)
-  scores_test1 = t(apply(vec, 1, function(x) regression_bf2(x, dta, glm_structure, prior_scales_test)))
-  
-  lambda_k = exp(-Ks/2)
-  #prior_scales_test = sqrt(lambda_k)
-  prior_scales_test = lambda_k
-  
-  #Get scores 
-  vec = matrix(which(Classes_test==2), ncol = 1)
-  scores_test2 = t(apply(vec, 1, function(x) regression_bf2(x, dta, lm_structure, prior_scales_test)))
-  
-  #again notice that scores were rearranged
-  scores_test = rbind(scores_test1, scores_test2)
-  
-  #prior probability
   prior_g = c(table(Classes_train)/length(Classes_train))
   
-  #data was rearranged so we have to change order of scores
-  Classes_train2 = c(rep(1, sum(Classes_train==1)), rep(2, sum(Classes_train==2)))
-  Classes_test2 = c(rep(1, sum(Classes_test==1)), rep(2, sum(Classes_test==2)))
-  
-  pred_classes = nb_updated_grid(scores_train, Classes_train2, prior_g, scores_test)
+  pred_classes = nb_updated_grid(scores_train, Classes_train, prior_g, scores_test)
   
   et = Sys.time()
   time_diff = et - st
   
-  misclass_mat[4, 1] = 1- sum(pred_classes==Classes_test2)/length(Classes_test2)
-  sens_mat[4,1] = sum(pred_classes==1 & Classes_test2 == 1)/(sum(pred_classes==2 & Classes_test2 == 1)+sum(pred_classes==1 & Classes_test2 == 1))
-  spec_mat[4,1] = sum(pred_classes==2 & Classes_test2 == 2)/(sum(pred_classes==2 & Classes_test2 == 2)+sum(pred_classes==1 & Classes_test2 == 2))
-  precision_mat[4,1] = sum(pred_classes==1 & Classes_test2 == 1)/(sum(pred_classes= 1 & Classes_test2 == 1)+sum(pred_classes==1 & Classes_test2 == 2))
+  misclass_mat[4, 1] = 1- sum(pred_classes==Classes_test)/length(Classes_test)
+  sens_mat[4,1] = sum(pred_classes==1 & Classes_test == 1)/(sum(pred_classes==2 & Classes_test == 1)+sum(pred_classes==1 & Classes_test == 1))
+  spec_mat[4,1] = sum(pred_classes==2 & Classes_test == 2)/(sum(pred_classes==2 & Classes_test == 2)+sum(pred_classes==1 & Classes_test == 2))
+  precision_mat[4,1] = sum(pred_classes==1 & Classes_test == 1)/(sum(pred_classes= 1 & Classes_test == 1)+sum(pred_classes==1 & Classes_test == 2))
   time_mat[4, 1] = as.numeric(time_diff)
+  
   
   
   
