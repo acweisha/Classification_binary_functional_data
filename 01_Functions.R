@@ -7,14 +7,12 @@
 ##################
 
 #dependencies to run all of the code
-library(fields)
 library(parallel)
 library(xtable)
 library(fda)
 library(refund)
 library(Matrix)
 library(MASS)
-library(fields)
 library(arm)
 library(mgcv)
 
