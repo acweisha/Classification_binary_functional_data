@@ -15,6 +15,7 @@ library(Matrix)
 library(MASS)
 library(arm)
 library(mgcv)
+library(readr)
 
 ####
 #Function to generate data in the various scenarios

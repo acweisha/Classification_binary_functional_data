@@ -11,7 +11,6 @@
 library(dtw)
 library(parallel)
 
-
 #load each dataset...make sure to change the directory to the location of the data
 timelines_genuine <- read_csv("/dir/timelines_genuine.csv")
 timelines_bots <- read_csv("/dir/timelines_bots.csv")
@@ -259,7 +258,7 @@ core_function = function(i, k_val=5){
 #####
 get_k = function(k_min = 5, k_max = 20){
   
-  set.seed(12)
+  set.seed(12345)
   
   ###
   #DTW Method
@@ -343,6 +342,13 @@ get_k = function(k_min = 5, k_max = 20){
   Classes_train = Classes_train[training_accounts]
   Curves_train = Curves_train[training_accounts,]
 
+  
+  #smaller test size to find the kl
+  N_test = 100
+  training_accounts = sample(1:length(Classes_test), N_test)
+  Classes_test = Classes_test[training_accounts]
+  Curves_test = Curves_test[training_accounts,]
+  
   #dtw_KNN_first = function(Curves_test, Curves_train, Classes_train, Classes_test, k_min=3, k_max=20)
   ks = k_min:k_max
   accs = rep(NA, length(ks))
@@ -361,7 +367,7 @@ get_k = function(k_min = 5, k_max = 20){
   #get the k
   k=ks[which.max(accs)]
   
-  print(k)
+  #print(k)
   return(k)
 
 }

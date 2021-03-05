@@ -9,7 +9,7 @@ README.txt
 The binary series for the data are provided and analyzed by the accompanying R code. This repository contains all of the code required to replicate the analyses in "Classification of Social Media Users Using a Generalized Functional Analysis". 
 
 The follow R dependencies are required for compilation: 
-	parallel, xtable, fda, refund, Matrix, MASS, arm, mgcv, randomforest, dtw
+	parallel, xtable, fda, refund, Matrix, MASS, arm, mgcv, randomforest, dtw, readr
 
 
 We did have access to cluster and ran much of the code across 16 different cores. We highly recommend access to multiple cores/cloud computing for compiling this code. The code was run using (7) DELL R7425 Dual Processor AMD Epyc 32 core 2.2 GHz machines with 512GB RAM each running 64Bit Ubuntu Linux Version 18.04. 
