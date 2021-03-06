@@ -1,7 +1,7 @@
 ##################
 #Data Analysis for "Classification of Social Media Users Using a Generalized Functional Analysis"
 #
-#Author: Anthony Weishampel
+#Author: 
 #Date: 2/27/2021
 #
 #

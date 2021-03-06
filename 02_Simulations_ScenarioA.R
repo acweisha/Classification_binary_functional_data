@@ -2,7 +2,7 @@
 #Simulation for Scenario 1 of 
 #"Classification of Social Media Users Using a Generalized Functional Analysis"
 #
-#Author: Anthony Weishampel
+#Author: 
 #Date: 2/27/2021
 #
 # Make sure to run 01_functions file first
