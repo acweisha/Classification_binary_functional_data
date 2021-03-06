@@ -16,7 +16,7 @@ We did have access to cluster and ran much of the code across 16 different cores
 Instructions for Use
 
 Data: 
-	The formatted binary series are found in the data fold. In the provided binary time series, there are four csv files, one for each type of account. Each row in these csv files correspond to the binary series of one account. The binary series are summarized using five minute windows, where a 1 is recorded if the account posted during those five minutes and a 0 is presented otherwise. We provided code to convert the provided binary series to different window sizes by binning the data. 
+	The formatted binary series are found in the data folder. In the provided binary time series, there are four csv files, one for each type of account. Each row in these csv files correspond to the binary series of one account. The binary series are summarized using five minute windows, where a 1 is recorded if the account posted during those five minutes and a 0 is presented otherwise. We provided code to convert the provided binary series to different window sizes by binning the data. 
 
 	The Twitter data for the genuine and automated accounts is located at http://mib.projects.iit.cnr.it/dataset.html. Twitter data for the foreign state linked accounts are provided in the Data Archive of Twitter Civic Integrity https://about.twitter.com/en/our-priorities/civic-integrity. All of the data are available for academic research and provided as csv files. In these files the User ID field is the unique identifier for the accounts. The data contain information about the Tweets and the user profile information. 
 
@@ -40,3 +40,6 @@ Reproducibility:
 		3) In each of the 03 data analysis files, you can select the number of cores to run the code on by changing the numCores_to_run line in the code. The 03 data analysis files provide the accuracies and the results of the confusion matrices at each iteration. 
 		4) Make the appropriate /dir/ changes in the Debot file and compile the code. 
 		5) Sensitivity and Specificity can be obtained by analyzing the saved output data from the confusion matrices. 
+		
+		
+
