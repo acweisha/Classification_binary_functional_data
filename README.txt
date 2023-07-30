@@ -2,7 +2,7 @@ README.txt
 
 #######
 #Project: "Classification of Social Media Users Using a Generalized Functional Analysis"
-#Authors: 
+#Authors:  Weishampel, A., Staicu, A.M., and Rand, W. 
 #Date: 03/04/2021
 #######
 
